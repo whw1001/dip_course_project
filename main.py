@@ -20,8 +20,9 @@ def select_image():
         # cv2.destroyAllWindows()
 
 def denoise(img):
-    global denoised_image
-    denoised_image = cv2.GaussianBlur(img, (15, 15), 0)
+    #global denoised_image
+    denoised_image = cv2.GaussianBlur(img, (35, 35), 0)
+    return denoised_image
 
 # 创建用于GUI展示的image并调整其大小以适应界面
 def show_image(img):
@@ -41,18 +42,19 @@ def show_image(img):
 
 # 边缘检测
 def detect_edges(img):
-    global edge
+   # global edge
     #gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    edge = cv2.Canny(img, 20, 25)
+    edge = cv2.Canny(img, 10, 15)
+    return edge
 
 def trigger():
     select_image()
     show_image(image)
 
-    denoise(image)
+    denoised_image = denoise(image)
     show_image(denoised_image)
 
-    detect_edges(denoised_image)
+    edge = detect_edges(denoised_image)
     show_image(edge)
     cv2.imwrite('canny6.png', edge)
 
