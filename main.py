@@ -1,30 +1,51 @@
 import cv2
+import numpy as np
 import tkinter as tk
 from tkinter import filedialog
-from PIL import Image, ImageTk
 
-image = Image.new("RGB", (100, 100))
-#读取image
+image = np.zeros((1000, 1000, 3), dtype=np.uint8)  # Creating a black image with OpenCV
+
+# 读取image
 def select_image():
     global image
     file_path = filedialog.askopenfilename()
     if file_path:
         image = cv2.imread(file_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(image)
+        h, w, _ = image.shape
+        # cv2.imshow("original_img", cv2.resize(image, (int(w * ratio), int(h * ratio))))
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
 # 创建用于GUI展示的image并调整其大小以适应界面
-def showing_image():
+def show_image(img):
+    #global image
+    if len(img.shape) == 2:
+        h, w = img.shape
+    elif len(img.shape) == 3:
+        h, w, _ = img.shape
+
+    ratio = min(1000 / h, 1000 / w)
+    cv2.imshow("img", cv2.resize(img, (int(w * ratio), int(h * ratio))))
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    # image_show = cv2.resize(img, (int(w * ratio), int(h * ratio)))
+    # label.config(image=image_show)
+    # label.image = image_show
+
+# 边缘检测
+def detect_edges():
     global image
-    image_show = image.copy()
-    image_show.thumbnail((300, 300))
-    photo = ImageTk.PhotoImage(image_show)
-    label.config(image=photo)
-    label.image = photo
+    global edge
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    edge = cv2.Canny(gray, 100, 200)
 
 def trigger():
     select_image()
-    showing_image()
+    show_image(image)
+    detect_edges()
+    show_image(edge)
+
 
 # 创建主窗口
 root = tk.Tk()
@@ -40,4 +61,3 @@ select_button.pack(padx=10, pady=5)
 
 # 运行主循环
 root.mainloop()
-
