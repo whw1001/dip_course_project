@@ -1,15 +1,16 @@
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 import tkinter as tk
 from tkinter import filedialog
 
 image = np.zeros((1000, 1000, 3), dtype=np.uint8)  # Creating a black image with OpenCV
 
 # 读取image
-def select_image():
+def select_image(path):
     global image
     #file_path = filedialog.askopenfilename()
-    file_path = 'images/test_images/6.jpg'
+    file_path = path
     #file_path = '30012.png'
     if file_path:
         image = cv2.imread(file_path)
@@ -21,7 +22,9 @@ def select_image():
 
 def denoise(img):
     #global denoised_image
-    denoised_image = cv2.GaussianBlur(img, (35, 35), 0)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #img = cv2.equalizeHist(img)
+    denoised_image = cv2.GaussianBlur(img, (9, 9), 0)
     return denoised_image
 
 # 创建用于GUI展示的image并调整其大小以适应界面
@@ -44,19 +47,51 @@ def show_image(img):
 def detect_edges(img):
    # global edge
     #gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    edge = cv2.Canny(img, 10, 15)
+    edge = cv2.Canny(img, 15, 20)
     return edge
 
-def trigger():
-    select_image()
-    show_image(image)
+def segement(color, edge):
+    rect = color.copy()
+    # edges = cv2.Canny(image, 30, 100)
 
-    denoised_image = denoise(image)
-    show_image(denoised_image)
+    # cv2.imwrite('edge.png', edges)
 
-    edge = detect_edges(denoised_image)
-    show_image(edge)
-    cv2.imwrite('canny6.png', edge)
+    # 寻找轮廓
+    contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # 过滤轮廓
+    filtered_contours = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 75.0:  # 根据实际情况调整面积阈值
+            filtered_contours.append(contour)
+
+    # 切分图像
+    segmented_images = []
+    for i, contour in enumerate(filtered_contours):
+        x, y, w, h = cv2.boundingRect(contour)
+        roi = color[y:y + h, x:x + w]
+        segmented_images.append(roi)
+        cv2.rectangle(rect, [x, y], [x + w, y + h], (0, 0, 250), 5)
+        #cv2.imwrite(f"seg/segmented_image_{i}.png", roi)
+
+    cv2.imwrite('rect.png', rect)
+    return rect
+
+#def trigger():
+select_image('images/test_images/1.jpg')
+#show_image(image)
+
+denoised_image = denoise(image)
+#show_image(denoised_image)
+
+edge = detect_edges(denoised_image)
+show_image(edge)
+cv2.imwrite('canny6.png', edge)
+
+rect = segement(image, edge)
+show_image(rect)
+
+
 
 # clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 # img_contrast = clahe.apply(img)
@@ -76,4 +111,4 @@ def trigger():
 # # 运行主循环
 # root.mainloop()
 
-trigger()
+#trigger()
