@@ -1,10 +1,7 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-import tkinter as tk
-from tkinter import filedialog
 
-image = np.zeros((1000, 1000, 3), dtype=np.uint8)  # Creating a black image with OpenCV
+image = np.zeros((1000, 1000, 3), dtype=np.uint8)
 
 # 读取image
 def select_image(path):
@@ -12,16 +9,8 @@ def select_image(path):
     file_path = path
     if file_path:
         image = cv2.imread(file_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         h, w, _ = image.shape
-
-
-def denoise(img):
-    #global denoised_image
-    # vimg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    #img = cv2.equalizeHist(img)
-    denoised_image = cv2.GaussianBlur(img, (3, 3), 0)
-    return denoised_image
 
 def show_image(img, name):
 
@@ -35,20 +24,6 @@ def show_image(img, name):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def remove_shadow(img):
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    # 定义阴影的HSV范围
-    lower_shadow = np.array([0, 0, 115], dtype=np.uint8)
-    upper_shadow = np.array([255, 33, 207], dtype=np.uint8)
-    # 创建阴影掩码
-    shadow_mask = cv2.inRange(hsv, lower_shadow, upper_shadow)
-    # 去除阴影
-    img_no_shadow = cv2.bitwise_and(img, img, mask=~shadow_mask)
-    # 将阴影区域改为白色
-    img_no_shadow[~shadow_mask == 0] = [255, 255, 255]
-
-    return img_no_shadow
-
 def extract_color(image, color_name, color_dict):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     lower_bound, upper_bound = color_dict[color_name]
@@ -56,74 +31,143 @@ def extract_color(image, color_name, color_dict):
     result = cv2.bitwise_and(image, image, mask=mask)
     return result
 
-def detect_edges(img):
+def find_contours(img):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    show_image(img, 'nnn ')
-    img = cv2.GaussianBlur(img, (3, 3), 0)
-    edge = cv2.Canny(img, 100, 200)
-   # # 霍夫变换
-   #  lines = cv2.HoughLinesP(edge, 1, np.pi / 180, threshold=30, minLineLength=10, maxLineGap=25)
-   #
-   #  # 绘制连接的线条到空白图像
-   #  connected_edge = np.zeros_like(img)
-   #  for line in lines:
-   #      x1, y1, x2, y2 = line[0]
-   #      cv2.line(connected_edge, (x1, y1), (x2, y2), (255, 255, 255), 2)
-    return edge
-
-def find_contours(edge):
     # 寻找轮廓
-    contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     # 过滤轮廓
     filtered_contours = []
     for contour in contours:
         perimeter = cv2.arcLength(contour, True)
-        if perimeter > 10000:
+        if perimeter > 100:
             filtered_contours.append(contour)
 
-    return contours
+    return filtered_contours
 
+# 绘制轮廓
 def draw_contours(img, contours):
-    cv2.drawContours(img, contours, -1, (0, 0, 0), 5)
+    cns = img.copy()
+    cv2.drawContours(cns, contours, -1, (0, 0, 0), 5)
+    return cns
+
 
 # 切分图像
-def segement(original_image, filtered_contours):
+def segement(original_image, mask, filtered_contours, current_color):
+    #global segmented_images
     rect = original_image.copy()
     segmented_images = []
+    j = 0
     for i, contour in enumerate(filtered_contours):
         x, y, w, h = cv2.boundingRect(contour)
-        if w*h > 50000:
-            roi = original_image[y:y + h, x:x + w]
+        if w*h > 40000:
+            roi = mask[y:y + h, x:x + w]
             segmented_images.append(roi)
             cv2.rectangle(rect, [x, y], [x + w, y + h], (0, 0, 250), 5)
-        #cv2.imwrite(f"seg/segmented_image_{i}.png", roi)
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            gray = cv2.medianBlur(gray, 9)
+            cv2.imwrite(f"segments/{current_color}_{j}.png", gray)
+            j += 1
 
     cv2.imwrite('rect.png', rect)
 
-    return rect
+    return rect, segmented_images
 
+def sift(img, template):
+    sift = cv2.SIFT_create()
+
+    keypoints_1, descriptors_1 = sift.detectAndCompute(img, None)
+    keypoints_2, descriptors_2 = sift.detectAndCompute(template, None)
+
+    # FLANN参数
+    FLANN_INDEX_KDTREE = 1
+    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+    search_params = dict(checks=50)  # or pass empty dictionary
+
+    # 创建FLANN匹配器
+    flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    # 使用KNN匹配描述符
+    matches = flann.knnMatch(descriptors_1, descriptors_2, k=2)
+    if len(matches) == 0:
+        return 0
+
+    else :
+    # 应用比例测试
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.9 * n.distance:
+                good_matches.append(m)
+
+        match_rate = len(good_matches) / len(matches) * 100
+        #print({color}, match_rate)
+        return match_rate
 
 # 定义颜色字典
-color_thresholds = {
-    'red': ([0, 100, 100], [10, 255, 255]),
-    'yellow': ([20, 100, 100], [30, 255, 255]),
-    'blue': ([100, 100, 100], [120, 255, 255]),
-    'green': ([70, 40, 40], [80, 255, 255]),
-    'purple': ([130, 50, 50], [160, 255, 255])
+colors = {
+    'red': ([0, 40, 100], [6, 255, 255]),
+    'yellow': ([19, 40, 140], [28, 255, 255]),
+    'orange': ([10, 137, 100], [18, 255, 255]),
+    'coffee': ([15, 40, 70], [21, 110, 200]),
+    'blue': ([96, 40, 20], [106, 255, 255]),
+    'dark blue': ([106, 40, 20], [114, 255, 255]),
+    'light green': ([39, 20, 20], [44, 255, 255]),
+    'green': ([71, 40, 60], [74, 255, 255]),
+    'dark green': ([74, 25, 20], [82, 255, 120]),
+    'pink': ([160, 40, 20], [167, 255, 255]),
+    'black': ([0, 0, 20], [180, 40, 50]),
+    'purple': ([145, 50, 50], [155, 255, 255]),
+    'white': ([7, 8, 100], [17, 15, 255]),
+    'gray': ([0, 0, 20], [160, 40, 128]),
 }
 
 
-select_image('images/test_images/3.jpg')
+select_image('test_images/10.jpg')
 
-green_result = extract_color(image, 'green', color_thresholds)
-show_image(green_result, 'green')
+templates_paths = {
+    #'1x4': 'templates/1x4.png',
+    '2x4': 'templates/2x4.png',
+    #'2x6': 'templates/2x6.png',
+    #'wheel': 'templates/wheel.png'
+}
 
-#green_result = cv2.cvtColor(green_result, cv2.COLOR_HSV2GRAY)
-edge = detect_edges(green_result)
-show_image(edge, 'edge')
+templates = {}
 
-green_result = cv2.cvtColor(green_result, cv2.COLOR_BGR2GRAY)
-contours = find_contours(green_result)
-rect = segement(image, contours)
-show_image(rect, 'rect')
+#读取模板图像
+for templates_path in templates_paths.values():
+    template = cv2.imread(templates_path)
+    template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    templates[templates_path] = template
+
+templates_length = len(templates)
+counts = np.zeros(templates_length)
+
+for color in colors:
+
+    mask = extract_color(image, color, colors)
+    #show_image(mask, color)
+
+    contours = find_contours(mask)
+
+    cns = draw_contours(image, contours)
+    #show_image(cns, '{color}')
+
+    rect, segmented_images = segement(image, mask, contours, color)
+    #show_image(rect, 'rect')
+
+    for segmented_image in segmented_images:
+        segmented_image = cv2.cvtColor(segmented_image, cv2.COLOR_BGR2GRAY)
+        #_, thresh1 = cv2.threshold(segmented_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        #show_image(thresh1, color)
+
+        K = 0
+        for template in templates.values():
+            #_, thresh2 = cv2.threshold(template, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            #match_rate = sift(thresh1, thresh2)
+            match_rate = sift(segmented_image, template)
+            if match_rate >= 27:
+                counts[K] += 1
+            K += 1
+
+print(counts)
 
